@@ -9,7 +9,7 @@ Add **In Thread antworten** to BundesMessenger Web's **existing message action t
 1. Install a userscript manager such as Tampermonkey.
 2. Open [`bundesmessenger-threads.user.js`](bundesmessenger-threads.user.js). Replace the placeholder line `// @match https://your-bundesmessenger.example/*` with **your exact BundesMessenger Web hostname**. Avoid broad URL permissions.
 3. Copy the script into Tampermonkey, save it, and reload BundesMessenger Web.
-4. Hover over a room message. The **In Thread antworten** action appears **inside the existing message toolbar**, just before the Options (three-dot) action. It opens Element's native thread panel.
+4. Hover over a room message. The **In Thread antworten** action appears **inside the existing message toolbar**, normally next to Reply, with the official Element Threads icon. It opens Element's native thread panel.
 
 The placeholder `@match` deliberately matches no real deployment. The private GitHub repository is not configured as an automatic userscript update source.
 
@@ -19,7 +19,7 @@ Element exposes `window.mxMatrixClientPeg` and `window.mxDispatcher` in its upst
 
 - **Legacy Element Web:** use `.mx_MessageActionBar_iconButton` and `.mx_MessageActionBar_threadButton`.
 - **Newer Element Web:** copy the style classes and `data-presentation` of a native toolbar button.
-- **React rerenders:** a coalesced `MutationObserver` restores the action if the toolbar is replaced or rebuilt, without adding duplicates.
+- **Icon:** use the exact Element Compound ThreadsIcon artwork (Element Creations Ltd, AGPL-3.0) rather than a custom-drawn SVG.\n- **React rerenders:** a coalesced `MutationObserver` restores the action if the toolbar is replaced or rebuilt, without adding duplicates.
 - **Native threads enabled:** if the toolbar already has a native thread action, no extra button is inserted.
 - **Existing thread view:** the action is not inserted into the thread view itself.
 
@@ -48,11 +48,11 @@ node --check bundesmessenger-threads.user.js
 node --test tests/*.test.cjs
 ```
 
-The suite covers legacy/modern toolbar placement, native dispatch, existing thread replies, unsupported relations, missing runtime globals, avoiding duplicate actions and existing thread views, and React toolbar rerenders. It is **not** an end-to-end test against a deployed BundesMessenger build.
+The suite covers legacy/modern toolbar placement and styling, exact icon paths, native dispatch, existing thread replies, unsupported relations, missing runtime globals, avoiding duplicate actions and existing thread views, and React toolbar rerenders. It is **not** an end-to-end test against a deployed BundesMessenger build.
 
 ## References
 
 - [BundesMessenger Web upstream fork](https://gitlab.opencode.de/bwi/bundesmessenger/clients/bundesmessenger-web)
 - [Legacy Element Web MessageActionBar](https://github.com/element-hq/element-web/blob/v1.11.87/src/components/views/messages/MessageActionBar.tsx)
 - [Element Web modern ActionBarView](https://github.com/element-hq/element-web/blob/develop/packages/shared-components/src/room/timeline/event-tile/actions/ActionBarView/ActionBarView.tsx)
-- [Element Web native dispatcher](https://github.com/element-hq/element-web/blob/develop/apps/web/src/dispatcher/dispatcher.ts)
+- [Original Element Threads icon](https://github.com/element-hq/compound-design-tokens/blob/main/icons/threads.svg) (copyright Element Creations Ltd, AGPL-3.0)\n- [Element Web native dispatcher](https://github.com/element-hq/element-web/blob/develop/apps/web/src/dispatcher/dispatcher.ts)
