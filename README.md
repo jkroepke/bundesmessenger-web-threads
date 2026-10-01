@@ -1,58 +1,34 @@
-# BundesMessenger Web Threads (Userscript)
+# Threads für BundesMessenger Web
 
-Add **In Thread antworten** to BundesMessenger Web's **existing message action toolbar**. The script calls Element Web's native `show_thread` action, opening its built-in thread panel and composer. It does not send Matrix requests, access authentication tokens, or implement encryption.
+Dieses Userscript ergänzt in der Webversion des BundesMessengers den Button **„In Thread antworten“**. Er erscheint direkt in der vorhandenen Nachrichten-Toolbar neben „Antworten“.
 
-**Status:** DOM/dispatch behaviour tested with mocked legacy and modern Element Web toolbar structures. Successfully opening threads with the earlier floating-button prototype was reported by the project user; **this integrated-toolbar version still needs verification against a deployed BundesMessenger Web instance**. Public access to the relevant BundesMessenger GitLab source files was unavailable during development.
+Das Script verwendet die bereits vorhandene Thread-Funktion des Clients. Es benötigt keinen eigenen Matrix-Server und liest keine Zugangstokens aus.
 
-## Install
+## Installation
 
-1. Install a userscript manager such as Tampermonkey.
-2. Open [`bundesmessenger-threads.user.js`](bundesmessenger-threads.user.js). Replace the placeholder line `// @match https://your-bundesmessenger.example/*` with **your exact BundesMessenger Web hostname**. Avoid broad URL permissions.
-3. Copy the script into Tampermonkey, save it, and reload BundesMessenger Web.
-4. Hover over a room message. The **In Thread antworten** action appears **inside the existing message toolbar**, normally next to Reply, with the official Element Threads icon. It opens Element's native thread panel.
+1. Installiere eine Userscript-Erweiterung, zum Beispiel [Tampermonkey](https://www.tampermonkey.net/).
+2. Öffne [bundesmessenger-threads.user.js](bundesmessenger-threads.user.js) und kopiere den Inhalt in ein neues Tampermonkey-Script.
+3. Ersetze die Zeile `// @match https://your-bundesmessenger.example/*` durch die URL deiner BundesMessenger-Webinstanz.
+4. Speichere das Script und lade BundesMessenger Web neu.
 
-The placeholder `@match` deliberately matches no real deployment. The private GitHub repository is not configured as an automatic userscript update source.
+## Verwendung
 
-## How it works
+Bewege die Maus über eine Nachricht und klicke in der Nachrichten-Toolbar auf **„In Thread antworten“**. Der normale Thread-Bereich des BundesMessengers öffnet sich.
 
-Element exposes `window.mxMatrixClientPeg` and `window.mxDispatcher` in its upstream browser builds. The userscript finds `.mx_MessageActionBar` inside `.mx_EventTile[data-event-id]` and inserts a small action using the **existing toolbar's styling**:
+## Hinweise
 
-- **Legacy Element Web:** use `.mx_MessageActionBar_iconButton` and `.mx_MessageActionBar_threadButton`.
-- **Newer Element Web:** copy the style classes and `data-presentation` of a native toolbar button.
-- **Icon:** use the exact Element Compound ThreadsIcon artwork (Element Creations Ltd, AGPL-3.0) rather than a custom-drawn SVG.\n- **React rerenders:** a coalesced `MutationObserver` restores the action if the toolbar is replaced or rebuilt, without adding duplicates.
-- **Native threads enabled:** if the toolbar already has a native thread action, no extra button is inserted.
-- **Existing thread view:** the action is not inserted into the thread view itself.
+- Das Script ist ein inoffizieller Workaround und kein Bestandteil des BundesMessengers.
+- Es setzt voraus, dass die verwendete Webversion die internen Element-Funktionen `mxMatrixClientPeg` und `mxDispatcher` bereitstellt. Nach einem Update kann eine Anpassung notwendig sein.
+- Verwende Userscripts nur, wenn dies bei dir erlaubt ist. Begrenze `@match` auf deine BundesMessenger-Instanz.
+- Das verwendete Thread-Icon stammt aus den [Element Compound Design Tokens](https://github.com/element-hq/compound-design-tokens/blob/main/icons/threads.svg) (© Element Creations Ltd., AGPL-3.0).
 
-When clicked, it resolves the selected message through the already-authenticated Matrix client and dispatches:
+## Entwicklung
 
-```js
-window.mxDispatcher.dispatch({ action: "show_thread", rootEvent: mxEvent });
-```
-
-Replies already belonging to a thread open the existing thread root. Reactions and other unsupported event relations cannot start new threads.
-
-## Troubleshooting
-
-- **No button:** verify `@match` and confirm the existing toolbar appears when hovering a message. The build must expose Element's `mxMatrixClientPeg` and `mxDispatcher` browser globals.
-- **Button not aligned:** the branded build may use different toolbar classes or extra wrappers. Inspect the existing toolbar HTML around `.mx_MessageActionBar`. The script intentionally avoids a separate floating action.
-- **Click has no effect:** open the browser developer console and check for errors. The fork may alter or remove the `show_thread` dispatcher handler or thread composer.
-- **Event not found:** scroll to the original message in its room so the Matrix client loads the corresponding event.
-- **Security:** use userscripts only where your organization's policies allow them, and limit `@match` to your deployment.
-
-## Local tests
-
-Requires Node.js with built-in `node:test` support:
+Lokale Tests mit Node.js ausführen:
 
 ```sh
 node --check bundesmessenger-threads.user.js
 node --test tests/*.test.cjs
 ```
 
-The suite covers legacy/modern toolbar placement and styling, exact icon paths, native dispatch, existing thread replies, unsupported relations, missing runtime globals, avoiding duplicate actions and existing thread views, and React toolbar rerenders. It is **not** an end-to-end test against a deployed BundesMessenger build.
-
-## References
-
-- [BundesMessenger Web upstream fork](https://gitlab.opencode.de/bwi/bundesmessenger/clients/bundesmessenger-web)
-- [Legacy Element Web MessageActionBar](https://github.com/element-hq/element-web/blob/v1.11.87/src/components/views/messages/MessageActionBar.tsx)
-- [Element Web modern ActionBarView](https://github.com/element-hq/element-web/blob/develop/packages/shared-components/src/room/timeline/event-tile/actions/ActionBarView/ActionBarView.tsx)
-- [Original Element Threads icon](https://github.com/element-hq/compound-design-tokens/blob/main/icons/threads.svg) (copyright Element Creations Ltd, AGPL-3.0)\n- [Element Web native dispatcher](https://github.com/element-hq/element-web/blob/develop/apps/web/src/dispatcher/dispatcher.ts)
+[Quellcode des BundesMessengers](https://gitlab.opencode.de/bwi/bundesmessenger/clients/bundesmessenger-web)
