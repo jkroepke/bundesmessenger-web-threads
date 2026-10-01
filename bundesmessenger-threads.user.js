@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BundesMessenger Web: Reply in thread
 // @namespace    https://github.com/jkroepke/bundesmessenger-web-threads
-// @version      0.2.0
+// @version      0.3.0
 // @description  Add a native-looking Reply in thread action to the existing message toolbar.
 // @author       Jan-Otto Kröpke
 // @match        https://your-bundesmessenger.example/*
@@ -99,21 +99,25 @@
         });
     }
 
+    // Official Element Compound ThreadsIcon:
+    // https://github.com/element-hq/compound-design-tokens/blob/main/icons/threads.svg
+    // Copyright Element Creations Ltd; AGPL-3.0 licensed artwork.
     function threadIcon() {
         const ns = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(ns, "svg");
-        svg.setAttribute("viewBox", "0 0 24 24");
-        svg.setAttribute("width", "20");
-        svg.setAttribute("height", "20");
-        svg.setAttribute("fill", "none");
-        svg.setAttribute("stroke", "currentColor");
-        svg.setAttribute("stroke-width", "1.8");
-        svg.setAttribute("stroke-linecap", "round");
-        svg.setAttribute("stroke-linejoin", "round");
-        svg.setAttribute("aria-hidden", "true");
-        const path = document.createElementNS(ns, "path");
-        path.setAttribute("d", "M20 11.5a7.5 7.5 0 0 0-7.5-7.5H7a5 5 0 0 0 0 10h1v4l4.5-4h.5M14 10.5h3a4 4 0 0 1 0 8h-1v2.5l-3-2.5h-1");
-        svg.appendChild(path);
+        for (const [name, value] of Object.entries({
+            width: "20", height: "20", viewBox: "0 0 24 24",
+            fill: "currentColor", "aria-hidden": "true",
+        })) svg.setAttribute(name, value);
+        const paths = [
+            "M7 10a.97.97 0 0 1-.713-.287A.97.97 0 0 1 6 9q0-.424.287-.713A.97.97 0 0 1 7 8h10q.424 0 .712.287Q18 8.576 18 9t-.288.713A.97.97 0 0 1 17 10zm0 4a.97.97 0 0 1-.713-.287A.97.97 0 0 1 6 13q0-.424.287-.713A.97.97 0 0 1 7 12h6q.424 0 .713.287.287.288.287.713 0 .424-.287.713A.97.97 0 0 1 13 14z",
+            "M3.707 21.293c-.63.63-1.707.184-1.707-.707V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6zM6 17h14V5H4v13.172l.586-.586A2 2 0 0 1 6 17",
+        ];
+        for (const d of paths) {
+            const path = document.createElementNS(ns, "path");
+            path.setAttribute("d", d);
+            svg.appendChild(path);
+        }
         return svg;
     }
 
@@ -124,18 +128,30 @@
         );
     }
 
-    function overflowItem(toolbar) {
+    function directToolbarItem(element, toolbar) {
+        while (element && element.parentElement !== toolbar) element = element.parentElement;
+        return element;
+    }
+
+    function insertionPoint(toolbar) {
+        // Follow Element's own action order: Reply, then Reply in thread.
+        const reply = [...toolbar.querySelectorAll("button")].find((button) => {
+            const label = button.getAttribute("aria-label") || button.getAttribute("title") || "";
+            return /^(reply|antworten)$/i.test(label.trim());
+        });
+        if (reply) {
+            const slot = directToolbarItem(reply, toolbar);
+            const items = [...toolbar.children];
+            return items[items.indexOf(slot) + 1] || null;
+        }
+
+        // Locale-independent fallback for unknown translations.
         const options = toolbar.querySelector([
             ".mx_MessageActionBar_optionsButton",
-            '[aria-label="Options"]',
-            '[aria-label="Optionen"]',
-            '[title="Options"]',
-            '[title="Optionen"]',
+            '[aria-label="Options"]', '[aria-label="Optionen"]',
+            '[title="Options"]', '[title="Optionen"]',
         ].join(", "));
-        let item = options;
-        // New Element versions may wrap buttons in tooltip elements.
-        while (item && item.parentElement !== toolbar) item = item.parentElement;
-        return item;
+        return directToolbarItem(options, toolbar);
     }
 
     function insertAction(toolbar) {
@@ -145,18 +161,24 @@
         if (!tile || toolbar.closest(".mx_ThreadView, .mx_ThreadPanel")) return;
         if (!runtime()) return;
 
-        const button = document.createElement("button");
+        // Shallow-clone a real action button: preserve its exact design-token
+        // classes, data-kind, data-size, border/padding, and theme behaviour.
+        // DOM cloneNode does NOT copy React's click listeners.
+        const peer = toolbar.querySelector('button[data-presentation]') ||
+            toolbar.querySelector(".mx_MessageActionBar_iconButton");
+        const button = peer ? peer.cloneNode(false) : document.createElement("button");
+        for (const attr of [
+            "id", "data-testid", "aria-describedby", "aria-disabled",
+            "aria-pressed", "aria-expanded", "disabled",
+        ]) button.removeAttribute(attr);
         button.type = "button";
+        button.className = (peer ? peer.className : "mx_MessageActionBar_iconButton") +
+            " mx_MessageActionBar_threadButton " + BUTTON_CLASS;
         button.title = LABEL;
         button.setAttribute("aria-label", LABEL);
-        // Copy a native peer's sizing/hover styles in newer Element builds.
-        const peer = [...toolbar.querySelectorAll('button[data-presentation]')][0];
-        if (peer) {
-            button.className = peer.className + " " + BUTTON_CLASS;
-            button.setAttribute("data-presentation", peer.getAttribute("data-presentation"));
-        } else {
-            button.className = "mx_MessageActionBar_iconButton mx_MessageActionBar_threadButton " + BUTTON_CLASS;
-        }
+        button.setAttribute("tabindex", "0");
+        // The legacy class supplies sizing; modern buttons inherit their peer's
+        // full Compound CSS class set and data-presentation attributes.
         button.appendChild(threadIcon());
         button.addEventListener("click", (event) => {
             event.preventDefault();
@@ -164,7 +186,7 @@
             openThread(tile);
         });
         button.addEventListener("contextmenu", (event) => event.stopPropagation());
-        toolbar.insertBefore(button, overflowItem(toolbar));
+        toolbar.insertBefore(button, insertionPoint(toolbar));
     }
 
     let scheduled = false;
