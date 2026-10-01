@@ -21,6 +21,15 @@ class Element {
         return false;
     }
     appendChild(node) { return this.insertBefore(node, null); }
+    cloneNode(deep) {
+        const copy = new Element(this.tagName);
+        copy.className = this.className;
+        copy.attributes = { ...this.attributes };
+        copy.style = { ...this.style };
+        if (deep) for (const child of this.children) copy.appendChild(child.cloneNode(true));
+        return copy;
+    }
+    removeAttribute(name) { delete this.attributes[name]; }
     insertBefore(node, anchor) {
         if (anchor && !this.children.includes(anchor)) throw Error('Invalid toolbar insertion');
         if (node.parentElement) node.remove();
@@ -91,6 +100,11 @@ function setup({ event = null, roomId = '!room:example.org', exposeRuntime = tru
     toolbar.className = 'mx_MessageActionBar';
     tile.appendChild(toolbar);
     const reply = new Element('button');
+    reply.setAttribute('aria-label', 'Reply');
+    reply.setAttribute('data-kind', 'tertiary');
+    reply.setAttribute('data-size', 'md');
+    reply.setAttribute('tabindex', '-1');
+    reply.setAttribute('aria-describedby', 'peer-tooltip');
     reply.className = variant === 'modern' ? 'compound-toolbar_item compound-button' : 'mx_MessageActionBar_iconButton';
     if (variant === 'modern') reply.setAttribute('data-presentation', 'icon');
     toolbar.appendChild(reply);
@@ -212,4 +226,31 @@ test('React toolbar mutations are idempotent and restore missing buttons', () =>
     app.actions()[0].remove();
     app.update();
     assert.equal(app.actions().length, 1);
+});
+
+test('matches the native button attributes without copying its tooltip or interactions', () => {
+    const app = setup({ variant: 'modern' });
+    const action = app.actions()[0];
+    assert.equal(action.getAttribute('data-kind'), 'tertiary');
+    assert.equal(action.getAttribute('data-size'), 'md');
+    assert.equal(action.getAttribute('aria-describedby'), null);
+    assert.equal(action.getAttribute('tabindex'), '0');
+    assert.equal(action.getAttribute('aria-label'), 'In Thread antworten');
+    assert.equal(action.children.length, 1);
+    assert.equal(action.children[0].getAttribute('fill'), 'currentColor');
+    assert.equal(action.children[0].children.length, 2);
+});
+
+test('uses the official Element thread icon paths', () => {
+    const action = setup().actions()[0];
+    const paths = action.children[0].children.map(node => node.getAttribute('d'));
+    assert.equal(paths[0].startsWith('M7 10a.97.97'), true);
+    assert.equal(paths[1].startsWith('M3.707 21.293'), true);
+});
+
+test('keeps the same native action behaviour with the updated icon', () => {
+    const original = { getRelation: () => null, getThread: () => null };
+    const app = setup({ variant: 'modern', event: original });
+    app.click();
+    assert.equal(app.dispatched[0].rootEvent, original);
 });
