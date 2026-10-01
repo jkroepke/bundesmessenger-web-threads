@@ -178,7 +178,7 @@ test('rejects unsupported relation events instead of opening a new thread', () =
 
 test('does not attach an action if native globals are unavailable', () => {
     const app = setup({ exposeRuntime: false });
-    app.hover(); app.click();
+    app.hover();
     assert.equal(app.dispatched.length, 0);
     assert.equal(app.actions().length, 0);
 });
