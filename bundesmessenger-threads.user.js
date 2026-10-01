@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BundesMessenger Web: Reply in thread
 // @namespace    https://github.com/jkroepke/bundesmessenger-web-threads
-// @version      0.1.0
-// @description  Open Element's existing thread UI for a selected BundesMessenger message.
+// @version      0.2.0
+// @description  Add a native-looking Reply in thread action to the existing message toolbar.
 // @author       Jan-Otto Kröpke
 // @match        https://your-bundesmessenger.example/*
 // @run-at       document-end
@@ -12,25 +12,14 @@
 (() => {
     "use strict";
 
-    // Replace the @match hostname above with YOUR deployment's exact origin.
-    // This script neither sends Matrix requests nor reads authentication tokens.
+    // Replace @match with your deployment's exact hostname.
+    // Reuse Element's authenticated Matrix client and native thread UI;
+    // never read tokens or send Matrix requests from the userscript.
+    const TOOLBAR_SELECTOR = ".mx_MessageActionBar";
     const TILE_SELECTOR = ".mx_EventTile[data-event-id]";
+    const BUTTON_CLASS = "bm-threads-userscript-button";
     const LABEL = "In Thread antworten";
-    let activeTile = null;
     let notification = null;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "bm-threads-userscript-button";
-    button.textContent = "↪";
-    button.title = LABEL;
-    button.setAttribute("aria-label", LABEL);
-    button.style.cssText = [
-        "position:fixed", "z-index:1100", "display:none", "width:32px", "height:32px",
-        "border:1px solid #888", "border-radius:6px", "background:#fff", "color:#222",
-        "font-size:22px", "line-height:1", "cursor:pointer", "box-shadow:0 2px 8px #0002",
-    ].join(";");
-    document.body.appendChild(button);
 
     function showMessage(message) {
         console.warn("[BundesMessenger Threads]", message);
@@ -88,58 +77,14 @@
         return null;
     }
 
-    function hideButton() {
-        activeTile = null;
-        button.style.display = "none";
-    }
-
-    function positionButton() {
-        if (!activeTile) return;
-        if (!activeTile.isConnected) return hideButton();
-        const rect = activeTile.getBoundingClientRect();
-        if (rect.bottom < 0 || rect.top > window.innerHeight) return hideButton();
-        button.style.top = String(Math.max(8, rect.top + 6)) + "px";
-        button.style.right = String(Math.max(8, window.innerWidth - rect.right + 8)) + "px";
-        button.style.display = "block";
-    }
-
-    document.addEventListener("pointerover", (event) => {
-        if (button.contains(event.target)) return;
-        const tile = event.target.closest?.(TILE_SELECTOR);
-        if (!tile || tile === activeTile) return;
-        // Fail closed if the branded build does not expose Element's native API.
-        if (!runtime()) return;
-        activeTile = tile;
-        positionButton();
-    });
-
-    document.addEventListener("pointerout", (event) => {
-        if (!activeTile || !activeTile.contains(event.target)) return;
-        const next = event.relatedTarget;
-        if (next && (activeTile.contains(next) || button.contains(next))) return;
-        hideButton();
-    });
-
-    button.addEventListener("pointerleave", (event) => {
-        if (!activeTile?.contains(event.relatedTarget)) hideButton();
-    });
-
-    document.addEventListener("scroll", positionButton, true);
-    window.addEventListener("resize", positionButton);
-
-    button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const eventId = activeTile?.getAttribute("data-event-id");
-        if (!eventId) return hideButton();
+    function openThread(tile) {
+        if (!tile.isConnected) return;
+        const eventId = tile.getAttribute("data-event-id");
+        if (!eventId) return;
         const api = runtime();
-        if (!api) {
-            hideButton();
-            return showMessage("Element-Dispatcher oder Matrix-Client nicht verfügbar. Dieser Build wird noch nicht unterstützt.");
-        }
-
+        if (!api) return showMessage("Element-Dispatcher oder Matrix-Client nicht verfügbar.");
         const mxEvent = findEvent(api.client, eventId);
-        if (!mxEvent) return showMessage("Nachricht nicht im lokalen Verlauf gefunden. Bitte im Raum weiter zu ihr scrollen.");
+        if (!mxEvent) return showMessage("Nachricht nicht im lokalen Verlauf gefunden.");
         const relationType = mxEvent.getRelation?.()?.rel_type;
         if (relationType && relationType !== "m.thread") {
             return showMessage("Für diesen Ereignistyp kann Element keinen neuen Thread erstellen.");
@@ -147,13 +92,102 @@
 
         const thread = mxEvent.getThread?.();
         const isReply = thread?.rootEvent && !mxEvent.isThreadRoot;
-        const rootEvent = isReply ? thread.rootEvent : mxEvent;
-        // This is the SAME action Element uses internally for "Reply in thread".
         api.dispatcher.dispatch({
             action: "show_thread",
-            rootEvent,
+            rootEvent: isReply ? thread.rootEvent : mxEvent,
             ...(isReply ? { initialEvent: mxEvent, highlighted: true, scrollIntoView: true } : {}),
         });
-        hideButton();
-    });
+    }
+
+    function threadIcon() {
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("width", "20");
+        svg.setAttribute("height", "20");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "1.8");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", "M20 11.5a7.5 7.5 0 0 0-7.5-7.5H7a5 5 0 0 0 0 10h1v4l4.5-4h.5M14 10.5h3a4 4 0 0 1 0 8h-1v2.5l-3-2.5h-1");
+        svg.appendChild(path);
+        return svg;
+    }
+
+    function nativeThreadButton(toolbar) {
+        // Do not duplicate a native action if the server/client later enables it.
+        return toolbar.querySelector(
+            '.mx_MessageActionBar_threadButton, [aria-label*="thread" i], [title*="thread" i]',
+        );
+    }
+
+    function overflowItem(toolbar) {
+        const options = toolbar.querySelector([
+            ".mx_MessageActionBar_optionsButton",
+            '[aria-label="Options"]',
+            '[aria-label="Optionen"]',
+            '[title="Options"]',
+            '[title="Optionen"]',
+        ].join(", "));
+        let item = options;
+        // New Element versions may wrap buttons in tooltip elements.
+        while (item && item.parentElement !== toolbar) item = item.parentElement;
+        return item;
+    }
+
+    function insertAction(toolbar) {
+        if (!toolbar || toolbar.querySelector("." + BUTTON_CLASS)) return;
+        if (nativeThreadButton(toolbar)) return;
+        const tile = toolbar.closest(TILE_SELECTOR);
+        if (!tile || toolbar.closest(".mx_ThreadView, .mx_ThreadPanel")) return;
+        if (!runtime()) return;
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.title = LABEL;
+        button.setAttribute("aria-label", LABEL);
+        // Copy a native peer's sizing/hover styles in newer Element builds.
+        const peer = [...toolbar.querySelectorAll('button[data-presentation]')][0];
+        if (peer) {
+            button.className = peer.className + " " + BUTTON_CLASS;
+            button.setAttribute("data-presentation", peer.getAttribute("data-presentation"));
+        } else {
+            button.className = "mx_MessageActionBar_iconButton mx_MessageActionBar_threadButton " + BUTTON_CLASS;
+        }
+        button.appendChild(threadIcon());
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openThread(tile);
+        });
+        button.addEventListener("contextmenu", (event) => event.stopPropagation());
+        toolbar.insertBefore(button, overflowItem(toolbar));
+    }
+
+    let scheduled = false;
+    function scan() {
+        for (const toolbar of document.querySelectorAll(TOOLBAR_SELECTOR)) insertAction(toolbar);
+    }
+    function scheduleScan() {
+        if (scheduled) return;
+        scheduled = true;
+        queueMicrotask(() => {
+            scheduled = false;
+            scan();
+        });
+    }
+
+    // React creates/removes the toolbar on hover and may rerender it at any time.
+    // A microtask-coalesced observer restores only missing buttons and avoids duplicates.
+    new MutationObserver(scheduleScan).observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("pointerover", (event) => {
+        const tile = event.target.closest?.(TILE_SELECTOR);
+        if (tile) {
+            for (const toolbar of tile.querySelectorAll(TOOLBAR_SELECTOR)) insertAction(toolbar);
+        }
+    }, true);
+    scan();
 })();
